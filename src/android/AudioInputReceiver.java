@@ -2,114 +2,164 @@ package com.exelerus.cordova.audioinputcapture;
 
 import android.media.AudioFormat;
 import android.media.AudioRecord;
+import android.media.AudioTrack;
 import android.media.MediaRecorder;
+import android.media.AudioDeviceInfo;
+import android.media.AudioManager;
+import android.content.Context;
 
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Message;
 import java.util.Arrays;
+import java.util.Map;
+import java.util.HashMap;
+
+import org.json.JSONArray;
+import org.json.JSONObject;
 
 import android.util.Base64;
 
 public class AudioInputReceiver extends Thread {
 
-    private final int RECORDING_BUFFER_FACTOR = 5;
-    private int channelConfig = AudioFormat.CHANNEL_IN_MONO;
-    private int audioFormat = AudioFormat.ENCODING_PCM_16BIT;
-    private int sampleRateInHz = 44100;
-    private int audioSource = 0;
+	private final int RECORDING_BUFFER_FACTOR = 5;
+	private int inputChannelConfig = AudioFormat.CHANNEL_IN_MONO;
+	private int outputChannelConfig = AudioFormat.CHANNEL_OUT_DEFAULT;
+	private int audioFormat = AudioFormat.ENCODING_PCM_16BIT;
+	private int sampleRateInHz = 44100;
+	private int audioSource = 0;
 
-    // For the recording buffer
-    private int minBufferSize = AudioRecord.getMinBufferSize(sampleRateInHz, channelConfig, audioFormat);
-    private int recordingBufferSize = minBufferSize * RECORDING_BUFFER_FACTOR;
+	private static final Map<String, String> sourceType2String;
+	static {
+		sourceType2String = new HashMap<String, String>();
+		sourceType2String.put("a", "b");
+		sourceType2String.put("c", "d");
+	}
 
-    // Used for reading from the AudioRecord buffer
-    private int readBufferSize = minBufferSize;
+	// For the recording buffer
+	private int minBufferSize = AudioRecord.getMinBufferSize(sampleRateInHz, inputChannelConfig, audioFormat);
+	private int recordingBufferSize = minBufferSize * RECORDING_BUFFER_FACTOR;
 
-    private AudioRecord recorder;
-    private Handler handler;
-    private Message message;
-    private Bundle messageBundle = new Bundle();
+	// Used for reading from the AudioRecord buffer
+	private int readBufferSize = minBufferSize;
 
-    public AudioInputReceiver() {
-        recorder = new AudioRecord(MediaRecorder.AudioSource.DEFAULT, sampleRateInHz, channelConfig, audioFormat, minBufferSize * RECORDING_BUFFER_FACTOR);
-    }
+	private AudioRecord recorder;
+	private AudioTrack audioTrack;
+	private Handler handler;
+	private Message message;
+	private Bundle messageBundle = new Bundle();
 
-    public AudioInputReceiver(int sampleRate, int bufferSizeInBytes, int channels, String format, int audioSource) {
-        sampleRateInHz = sampleRate;
+	public AudioInputReceiver() {
+		recorder = new AudioRecord(MediaRecorder.AudioSource.DEFAULT, sampleRateInHz, inputChannelConfig, audioFormat,
+				minBufferSize * RECORDING_BUFFER_FACTOR);
+		audioTrack = new AudioTrack(AudioManager.STREAM_MUSIC, sampleRateInHz, outputChannelConfig, audioFormat,
+				recordingBufferSize, AudioTrack.MODE_STREAM);
+	}
 
-        switch (channels) {
-            case 2:
-                channelConfig = AudioFormat.CHANNEL_IN_STEREO;
-                break;
-            case 1:
-            default:
-                channelConfig = AudioFormat.CHANNEL_IN_MONO;
-                break;
-        }
-        if(format == "PCM_8BIT") {
-            audioFormat = AudioFormat.ENCODING_PCM_8BIT;
-        }
-        else {
-            audioFormat = AudioFormat.ENCODING_PCM_16BIT;
-        }
+	public AudioInputReceiver(int sampleRate, int bufferSizeInBytes, int channels, String format, int audioSource) {
+		sampleRateInHz = sampleRate;
 
-        readBufferSize = bufferSizeInBytes;
+		switch (channels) {
+		case 2:
+			inputChannelConfig = AudioFormat.CHANNEL_IN_STEREO;
+			break;
+		case 1:
+		default:
+			inputChannelConfig = AudioFormat.CHANNEL_IN_MONO;
+			break;
+		}
+		if (format == "PCM_8BIT") {
+			audioFormat = AudioFormat.ENCODING_PCM_8BIT;
+		} else {
+			audioFormat = AudioFormat.ENCODING_PCM_16BIT;
+		}
 
-        // Get the minimum recording buffer size for the specified configuration
-        minBufferSize = AudioRecord.getMinBufferSize(sampleRateInHz, channelConfig, audioFormat);
+		readBufferSize = bufferSizeInBytes;
 
-        // We use a recording buffer size larger than the one used for reading to avoid buffer underrun.
-        recordingBufferSize = readBufferSize * RECORDING_BUFFER_FACTOR;
+		// Get the minimum recording buffer size for the specified configuration
+		minBufferSize = AudioRecord.getMinBufferSize(sampleRateInHz, inputChannelConfig, audioFormat);
 
-        // Ensure that the given recordingBufferSize isn't lower than the minimum buffer size allowed for the current configuration
-        //
-        if (recordingBufferSize < minBufferSize) {
-            recordingBufferSize = minBufferSize;
-        }
+		// We use a recording buffer size larger than the one used for reading to avoid
+		// buffer underrun.
+		recordingBufferSize = readBufferSize * RECORDING_BUFFER_FACTOR;
 
-        recorder = new AudioRecord(audioSource, sampleRateInHz, channelConfig, audioFormat, recordingBufferSize);
-    }
+		// Ensure that the given recordingBufferSize isn't lower than the minimum buffer
+		// size allowed for the current configuration
+		//
+		if (recordingBufferSize < minBufferSize) {
+			recordingBufferSize = minBufferSize;
+		}
 
-    public void setHandler(Handler handler) {
-        this.handler = handler;
-    }
+		recorder = new AudioRecord(audioSource, sampleRateInHz, inputChannelConfig, audioFormat, recordingBufferSize);
+		audioTrack = new AudioTrack(AudioManager.STREAM_MUSIC, sampleRateInHz, outputChannelConfig, audioFormat,
+				recordingBufferSize, AudioTrack.MODE_STREAM);
+	}
 
-    @Override
-    public void run() {
-        int numReadBytes = 0;
-        short audioBuffer[] = new short[readBufferSize];
+	public void setHandler(Handler handler) {
+		this.handler = handler;
+	}
 
-        synchronized(this) {
-            recorder.startRecording();
+	public JSONArray getSourcesList(Context context) {
+		JSONArray results = new JSONArray();
 
-            while (!isInterrupted()) {
-                numReadBytes = recorder.read(audioBuffer, 0, readBufferSize);
+		AudioManager audioManager = (AudioManager) context.getSystemService(Context.AUDIO_SERVICE);
 
-                if (numReadBytes > 0) {
-                    try {
-                        String decoded = Arrays.toString(audioBuffer);
+		if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.M) {
+			try {
+				AudioDeviceInfo[] adi = audioManager.getDevices(AudioManager.GET_DEVICES_INPUTS);
+				for (int i = 0; i < adi.length; i++) {
+					// make sure it's a input not an output (should be the case because we asked for
+					// them...) and add the device info to the results
+					if (adi[i].isSource()) {
+						JSONObject curDevice = new JSONObject();
+						curDevice.put("id", adi[i].getId());
+						curDevice.put("type", adi[i].getType());
+						results.put(curDevice);
+					}
+				}
+			} catch (Exception e) {
+				// some exception handler code.
+			}
+		}
+		return results;
+	}
 
-                        message = handler.obtainMessage();
-                        messageBundle.putString("data", decoded);
-                        message.setData(messageBundle);
-                        handler.sendMessage(message);
-                    }
-                    catch(Exception ex) {
-                        message = handler.obtainMessage();
-                        messageBundle.putString("error", ex.toString());
-                        message.setData(messageBundle);
-                        handler.sendMessage(message);
-                    }
-                }
-            }
+	@Override
+	public void run() {
+		int numReadBytes = 0;
+		short audioBuffer[] = new short[readBufferSize];
 
-            if (recorder.getRecordingState() == AudioRecord.RECORDSTATE_RECORDING) {
-                recorder.stop();
-            }
+		synchronized (this) {
+			recorder.startRecording();
+			audioTrack.play();
 
-            recorder.release();
-            recorder = null;
-        }
-    }
+			while (!isInterrupted()) {
+				numReadBytes = recorder.read(audioBuffer, 0, readBufferSize);
+				audioTrack.write(audioBuffer, 0, audioBuffer.length);
+
+				if (numReadBytes > 0) {
+					try {
+						String decoded = Arrays.toString(audioBuffer);
+
+						message = handler.obtainMessage();
+						messageBundle.putString("data", decoded);
+						message.setData(messageBundle);
+						handler.sendMessage(message);
+					} catch (Exception ex) {
+						message = handler.obtainMessage();
+						messageBundle.putString("error", ex.toString());
+						message.setData(messageBundle);
+						handler.sendMessage(message);
+					}
+				}
+			}
+
+			if (recorder.getRecordingState() == AudioRecord.RECORDSTATE_RECORDING) {
+				recorder.stop();
+			}
+
+			recorder.release();
+			recorder = null;
+		}
+	}
 }
