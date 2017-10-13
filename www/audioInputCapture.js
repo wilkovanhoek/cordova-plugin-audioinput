@@ -45,7 +45,8 @@ audioinput.DEFAULT = {
 	NORMALIZATION_FACTOR : 32767.0,
 	STREAM_TO_WEBAUDIO : false,
 	CONCATENATE_MAX_CHUNKS : 10,
-	AUDIOSOURCE_TYPE : audioinput.AUDIOSOURCE_TYPE.DEFAULT
+	AUDIOSOURCE_TYPE : audioinput.AUDIOSOURCE_TYPE.DEFAULT,
+	MONITORING : false
 };
 
 /**
@@ -86,6 +87,11 @@ audioinput.start = function(cfg) {
 		audioinput._cfg.concatenateMaxChunks = cfg.concatenateMaxChunks
 				|| audioinput.DEFAULT.CONCATENATE_MAX_CHUNKS;
 		audioinput._cfg.audioSourceType = cfg.audioSourceType || 0;
+		audioinput._cfg.monitoring = typeof cfg.monitoring == 'boolean' ? cfg.monitoring
+				: audioinput.DEFAULT.MONITORING;
+
+		typeof cfg.streamToWebAudio == 'boolean' ? cfg.streamToWebAudio
+				: audioinput.DEFAULT.STREAM_TO_WEBAUDIO;
 
 		if (audioinput._cfg.channels < 1 && audioinput._cfg.channels > 2) {
 			throw "Invalid number of channels (" + audioinput._cfg.channels
@@ -108,10 +114,11 @@ audioinput.start = function(cfg) {
 		}
 
 		exec(audioinput._audioInputEvent, audioinput._audioInputErrorEvent,
-				"AudioInputCapture", "start",
-				[ audioinput._cfg.sampleRate, audioinput._cfg.bufferSize,
-						audioinput._cfg.channels, audioinput._cfg.format,
-						audioinput._cfg.audioSourceType ]);
+				"AudioInputCapture", "start", [ audioinput._cfg.sampleRate,
+						audioinput._cfg.bufferSize, audioinput._cfg.channels,
+						audioinput._cfg.format,
+						audioinput._cfg.audioSourceType,
+						audioinput._cfg.monitoring ]);
 
 		audioinput._capturing = true;
 
@@ -147,10 +154,29 @@ audioinput.stop = function() {
 };
 
 /**
+ * Toggle if sound is monitored directly. Caution: this will end the current
+ * audio capturing and start a new one.
+ */
+audioinput.toogleMonitoring = function() {
+	audioinput._cfg.monitoring = !audioinput._cfg.monitoring;
+
+	if (audioinput._capturing) {
+		exec(null, audioinput._audioInputErrorEvent, "AudioInputCapture",
+				"setMonitoring", [ audioinput._cfg.monitoring ]);
+	}
+};
+
+audioinput.isMonitoring = function() {
+	if (audioinput._cfg)
+		return audioinput._cfg.monitoring;
+	else
+		return false;
+};
+
+/**
  * List available sources
  */
 audioinput.listSources = function(success, error) {
-	console.log("list sources called")
 	exec(success, error, "AudioInputCapture", "listSources", []);
 };
 
