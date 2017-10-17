@@ -1,6 +1,7 @@
 var argscheck = require('cordova/argscheck'), utils = require('cordova/utils'), exec = require('cordova/exec'), channel = require('cordova/channel');
 
 var audioinput = {};
+var recording = false;
 
 // Supported audio formats
 audioinput.FORMAT = {
@@ -171,6 +172,40 @@ audioinput.isMonitoring = function() {
 		return audioinput._cfg.monitoring;
 	else
 		return false;
+};
+
+/**
+ * Toggle if sound is monitored directly. Caution: this will end the current
+ * audio capturing and start a new one.
+ */
+audioinput.startRecording = function(filePath, fileName) {
+	if (!recording) {
+		recording = true;
+
+		if (audioinput._capturing) {
+			exec(null, audioinput._audioInputErrorEvent, "AudioInputCapture",
+					"startRecording", [ filePath, fileName ]);
+		}
+	}
+
+};
+
+audioinput.isRecording = function() {
+	return recording
+};
+
+/**
+ * Toggle if sound is monitored directly. Caution: this will end the current
+ * audio capturing and start a new one.
+ */
+audioinput.finishRecording = function() {
+	if (recording) {
+		recording = false;
+		if (audioinput._capturing) {
+			exec(null, audioinput._audioInputErrorEvent, "AudioInputCapture",
+					"finishRecording", []);
+		}
+	}
 };
 
 /**

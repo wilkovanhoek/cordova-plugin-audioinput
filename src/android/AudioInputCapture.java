@@ -78,6 +78,26 @@ public class AudioInputCapture extends CordovaPlugin {
 	    this.callbackContext = null;
 	    callbackContext.success();
 	    return true;
+	} else if (action.equals("startRecording")) {
+	    // just try to set the monitoring in the receiver thread.
+	    try {
+		Context context = this.cordova.getActivity().getApplicationContext();
+		String filePath = args.getString(0);
+		String fileName = args.getString(1);
+		if (receiver != null)
+		    receiver.startRecording(filePath, fileName, context);
+	    } catch (Exception e) {
+		Log.e(LOG_TAG, e.getMessage(), e);
+		return false;
+	    }
+	    callbackContext.success();
+	    return true;
+	} else if (action.equals("finishRecording")) {
+	    if (receiver != null)
+		receiver.finishRecording();
+	    this.callbackContext = null;
+	    callbackContext.success();
+	    return true;
 	} else if (action.equals("setMonitoring")) {
 	    // just try to set the monitoring in the receiver thread.
 	    try {
