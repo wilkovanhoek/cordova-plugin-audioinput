@@ -113,10 +113,12 @@ public class AudioInputReceiver extends Thread {
 	if (recordingBufferSize < minBufferSize) {
 	    recordingBufferSize = minBufferSize;
 	}
+	Log.e(LOG_TAG, "minBufferSize: " + minBufferSize + " - readBufferSize: " + readBufferSize
+		+ " - recordingBufferSize: " + recordingBufferSize);
 
-	recorder = new AudioRecord(audioSource, sampleRateInHz, inputChannelConfig, audioFormat, recordingBufferSize);
+	recorder = new AudioRecord(audioSource, sampleRateInHz, inputChannelConfig, audioFormat, readBufferSize);
 	audioTrack = new AudioTrack(AudioManager.STREAM_MUSIC, sampleRateInHz, outputChannelConfig, audioFormat,
-		recordingBufferSize, AudioTrack.MODE_STREAM);
+		readBufferSize, AudioTrack.MODE_STREAM);
     }
 
     public void setHandler(Handler handler) {
@@ -128,7 +130,16 @@ public class AudioInputReceiver extends Thread {
     }
 
     public void startRecording(String folderPath, String fileName, Context context) {
-	this.folderPath = context.getFilesDir().getAbsolutePath();
+	this.folderPath = folderPath;
+	try {
+	    File dir = new File(this.folderPath);
+	    if (!dir.exists()) {
+		dir.mkdirs();
+	    }
+	} catch (Exception e) {
+	    Log.w("creating file error", e.toString());
+	}
+	// this.folderPath = context.getExternalStorageDirectory();
 	this.fileName = fileName;
 	this.startRecording = true;
     }
@@ -171,97 +182,109 @@ public class AudioInputReceiver extends Thread {
 	long total = 0;
 	byte audioBuffer[] = new byte[readBufferSize];
 
-	synchronized (this) {
-	    recorder.startRecording();
-	    audioTrack.play();
+	if (recorder.getState() == AudioRecord.STATE_INITIALIZED) {
+	    synchronized (this) {
+		recorder.startRecording();
+		audioTrack.play();
 
-	    while (!isInterrupted()) {
-		if (this.startRecording) {
-		    this.startRecording = false;
-		    this.recording = true;
-		    Log.e(LOG_TAG, folderPath);
-		    outputFile = new File(folderPath, fileName);
-		    try {
-			wavOut = new FileOutputStream(outputFile);
-			writeWavHeader(wavOut, inputChannelConfig, sampleRateInHz, audioFormat);
-		    } catch (IOException e) {
-			Log.e(LOG_TAG, e.getMessage(), e);
-			this.recording = false;
-		    }
-		}
-
-		numReadBytes = recorder.read(audioBuffer, 0, readBufferSize);
-		if (this.monitoring)
-		    audioTrack.write(audioBuffer, 0, audioBuffer.length);
-
-		if (this.recording) {
-		    try {
-			// WAVs cannot be > 4 GB due to the use of 32 bit unsigned integers.
-			if (total + numReadBytes > 4294967295L) {
-			    // Write as many bytes as we can before hitting the max size
-			    for (int i = 0; i < numReadBytes && total <= 4294967295L; i++, total++) {
-				wavOut.write(audioBuffer[i]);
+		while (!isInterrupted()) {
+		    if (this.startRecording) {
+			this.startRecording = false;
+			this.recording = true;
+			outputFile = new File(folderPath, fileName);
+			if (!outputFile.exists()) {
+			    try {
+				outputFile.createNewFile();
+			    } catch (IOException e) {
+				e.printStackTrace();
 			    }
-			    this.finishRecording = true;
-			    this.recording = false;
-			} else {
-			    // Write out the entire read buffer
-			    wavOut.write(audioBuffer, 0, numReadBytes);
-			    total += numReadBytes;
 			}
-		    } catch (IOException e) {
-			Log.e(LOG_TAG, e.getMessage(), e);
-			this.recording = false;
-		    }
-		}
-
-		if (numReadBytes > 0) {
-		    try {
-			String decoded = Arrays.toString(audioBuffer);
-
-			message = handler.obtainMessage();
-			messageBundle.putString("data", decoded);
-			message.setData(messageBundle);
-			handler.sendMessage(message);
-		    } catch (Exception ex) {
-			message = handler.obtainMessage();
-			messageBundle.putString("error", ex.toString());
-			message.setData(messageBundle);
-			handler.sendMessage(message);
-		    }
-		}
-		if (this.finishRecording) {
-		    this.recording = false;
-		    this.finishRecording = false;
-		    total = 0;
-		    if (wavOut != null) {
 			try {
-			    wavOut.close();
-			} catch (IOException ex) {
-			    //
+			    wavOut = new FileOutputStream(outputFile);
+			    writeWavHeader(wavOut, inputChannelConfig, sampleRateInHz, audioFormat);
+			} catch (IOException e) {
+			    Log.e(LOG_TAG, e.getMessage(), e);
+			    this.recording = false;
 			}
 		    }
 
-		    try {
-			updateWavHeader(outputFile);
-		    } catch (IOException e) {
-			Log.e(LOG_TAG, e.getMessage(), e);
+		    numReadBytes = recorder.read(audioBuffer, 0, readBufferSize);
+
+		    if (this.monitoring)
+			audioTrack.write(audioBuffer, 0, audioBuffer.length);
+
+		    if (this.finishRecording) {
+			this.recording = false;
+			this.finishRecording = false;
+			total = 0;
+			if (wavOut != null) {
+			    try {
+				wavOut.close();
+			    } catch (IOException ex) {
+				//
+			    }
+			}
+
+			try {
+			    updateWavHeader(outputFile);
+			} catch (IOException e) {
+			    Log.e(LOG_TAG, e.getMessage(), e);
+			}
+
+		    }
+
+		    if (this.recording) {
+			try {
+			    // WAVs cannot be > 4 GB due to the use of 32 bit unsigned integers.
+			    if (total + numReadBytes > 4294967295L) {
+				// Write as many bytes as we can before hitting the max size
+				for (int i = 0; i < numReadBytes && total <= 4294967295L; i++, total++) {
+				    wavOut.write(audioBuffer[i]);
+				}
+				this.finishRecording = true;
+				this.recording = false;
+			    } else {
+				// Write out the entire read buffer
+				wavOut.write(audioBuffer, 0, numReadBytes);
+				total += numReadBytes;
+			    }
+			} catch (IOException e) {
+			    Log.e(LOG_TAG, e.getMessage(), e);
+			    this.recording = false;
+			}
+		    }
+
+		    if (numReadBytes > 0) {
+			try {
+			    String decoded = Arrays.toString(audioBuffer);
+
+			    message = handler.obtainMessage();
+			    messageBundle.putString("data", decoded);
+			    message.setData(messageBundle);
+			    handler.sendMessage(message);
+			} catch (Exception ex) {
+			    message = handler.obtainMessage();
+			    messageBundle.putString("error", ex.toString());
+			    message.setData(messageBundle);
+			    handler.sendMessage(message);
+			}
 		    }
 
 		}
-	    }
 
-	    // if (recorder.getRecordingState() == AudioRecord.RECORDSTATE_RECORDING) {
-	    //
-	    // }
-	    audioTrack.pause();
-	    audioTrack.flush();
-	    audioTrack.stop();
-	    audioTrack.release();
-	    recorder.stop();
-	    recorder.release();
-	    recorder = null;
+		// if (recorder.getRecordingState() == AudioRecord.RECORDSTATE_RECORDING) {
+		//
+		// }
+		audioTrack.pause();
+		audioTrack.flush();
+		audioTrack.stop();
+		audioTrack.release();
+		recorder.stop();
+		recorder.release();
+		recorder = null;
+	    }
 	}
+
     }
 
     /**
