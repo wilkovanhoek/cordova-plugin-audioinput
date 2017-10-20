@@ -47,7 +47,8 @@ audioinput.DEFAULT = {
 	STREAM_TO_WEBAUDIO : false,
 	CONCATENATE_MAX_CHUNKS : 10,
 	AUDIOSOURCE_TYPE : audioinput.AUDIOSOURCE_TYPE.DEFAULT,
-	MONITORING : false
+	MONITORING : false,
+	MONITORSAMPLERATE : 1
 };
 
 /**
@@ -90,6 +91,8 @@ audioinput.start = function(cfg) {
 		audioinput._cfg.audioSourceType = cfg.audioSourceType || 0;
 		audioinput._cfg.monitoring = typeof cfg.monitoring == 'boolean' ? cfg.monitoring
 				: audioinput.DEFAULT.MONITORING;
+		audioinput._cfg.monitorSampleRate = cfg.monitorSampleRate
+				|| audioinput.DEFAULT.MONITORSAMPLERATE;
 
 		typeof cfg.streamToWebAudio == 'boolean' ? cfg.streamToWebAudio
 				: audioinput.DEFAULT.STREAM_TO_WEBAUDIO;
@@ -119,7 +122,8 @@ audioinput.start = function(cfg) {
 						audioinput._cfg.bufferSize, audioinput._cfg.channels,
 						audioinput._cfg.format,
 						audioinput._cfg.audioSourceType,
-						audioinput._cfg.monitoring ]);
+						audioinput._cfg.monitoring,
+						audioinput._cfg.monitorSampleRate ]);
 
 		audioinput._capturing = true;
 
@@ -146,7 +150,7 @@ audioinput.stop = function() {
 		audioinput._capturing = false;
 	}
 
-	if (audioinput._cfg.streamToWebAudio) {
+	if (audioinput._cfg && audioinput._cfg.streamToWebAudio) {
 		if (audioinput._timerGetNextAudio) {
 			clearTimeout(audioinput._timerGetNextAudio);
 		}
@@ -158,7 +162,7 @@ audioinput.stop = function() {
  * Toggle if sound is monitored directly. Caution: this will end the current
  * audio capturing and start a new one.
  */
-audioinput.toogleMonitoring = function() {
+audioinput.toggleMonitoring = function() {
 	audioinput._cfg.monitoring = !audioinput._cfg.monitoring;
 
 	if (audioinput._capturing) {
@@ -335,6 +339,8 @@ audioinput._normalizeAudio = function(pcmData) {
 
 	if (audioinput._cfg.normalize) {
 		for (var i = 0; i < pcmData.length; i++) {
+			// if (Math.abs(pcmData[i]) > audioinput._cfg.normalizationFactor)
+			// pcmData[i] = audioinput._cfg.normalizationFactor;
 			pcmData[i] = parseFloat(pcmData[i]
 					/ audioinput._cfg.normalizationFactor);
 		}
