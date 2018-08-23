@@ -16,7 +16,7 @@
         <clobbers target="audioinput" />
     </js-module>
 
-    <dependency id="cordova-plugin-compat" version="^1.0.0" />
+    <dependency id="cordova-plugin-compat" version="^1.2.0" />
 
     <!-- android -->
     <platform name="android">
