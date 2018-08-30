@@ -1,6 +1,6 @@
 {
   "name": "cordova-plugin-audioinput",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "description": "This cordova plugin enables audio capture from the device microphone, by in (near) real-time forwarding raw audio data to the web layer of your application.",
   "cordova": {
     "id": "cordova-plugin-audioinput",
@@ -11,7 +11,7 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/edimuj/cordova-plugin-audioinput.git"
+    "url": "git+https://github.com/wilkovanhoek/cordova-plugin-audioinput.git"
   },
   "keywords": [
     "ecosystem:cordova",
