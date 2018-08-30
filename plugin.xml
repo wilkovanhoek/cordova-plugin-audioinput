@@ -15,8 +15,10 @@
     <js-module name="AudioInput" src="www/audioInputCapture.js">
         <clobbers target="audioinput" />
     </js-module>
-
-    <dependency id="cordova-plugin-compat" version="^1.2.0" />
+	
+    <engines>
+	<engine name="cordova-android" version=">=6.3.0"/>
+    </engines>
 
     <!-- android -->
     <platform name="android">
